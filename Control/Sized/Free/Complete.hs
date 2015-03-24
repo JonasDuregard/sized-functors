@@ -12,7 +12,7 @@ data Complete a where
   (:$:)     :: (a -> b) -> Complete a -> Complete b
   (:*:)     :: Complete a -> Complete b -> Complete (a,b)
   Aconcat   :: [Complete a] -> Complete a
-  Kbits     :: Int -> Complete Integer
+  FinBits   :: Integer -> Complete Integer
   Naturals  :: Complete Integer
   Fin       :: Integer -> Complete Integer
   Pay       :: Complete a -> Complete a
@@ -31,7 +31,7 @@ instance Alternative Complete where
 instance Sized Complete where
   pay      = Pay
   naturals = Naturals
-  kbits    = Kbits
+  finBits  = FinBits
   aconcat  = Aconcat
   pair     = (:*:)
   fin      = Fin

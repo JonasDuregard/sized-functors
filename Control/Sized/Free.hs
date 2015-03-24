@@ -1,8 +1,9 @@
 {-# LANGUAGE GADTs, DeriveDataTypeable, DeriveFunctor #-}
 module Control.Sized.Free where
 
-import Control.MemoSized
-import Data.Hole
+import Control.Sized
+import Data.Typeable
+-- import Data.Hole
 -- import Data.Tree
 
 -- | The FreeSized Sized functor, with a sensible set of constructors
@@ -19,7 +20,7 @@ data FreeSized a where
 --  Fin       :: Integer -> FreeSized Integer
   Pure      :: a -> FreeSized a
   Empty     :: FreeSized a
-  AssocR    :: FreeSized ((a,b),c) -> FreeSized (a,(b,c))
+--  AssocR    :: FreeSized ((a,b),c) -> FreeSized (a,(b,c))
   deriving Typeable
   
 instance Functor FreeSized where
@@ -37,4 +38,7 @@ instance Sized FreeSized where
   pay      = Pay
 --  fin      = Fin
   pair     = (:*:)
+
+
+
 

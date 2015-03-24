@@ -1,6 +1,6 @@
 {-#LANGUAGE DeriveDataTypeable#-}
 
-module Data.CardList where
+module Control.Sized.CardList where
 
 import Control.Sized
 import Data.Monoid(Monoid(..))
@@ -66,7 +66,8 @@ instance Monoid (CardList a) where
   mappend = (<|>)
 
 instance Sized CardList where
-  pay = CardList . (0:) . cardList
+  pay    = CardList . (0:) . cardList
+  fin i  = CardList [i]
   aconcat []  = empty
   aconcat [x] = x
   aconcat [x,y] = x <|> y
