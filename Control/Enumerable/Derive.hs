@@ -1,5 +1,5 @@
 {-#Language TemplateHaskell#-}
-module Test.Feat.Internals.Derive where
+module Control.Enumerable.Derive (instanceFor, module Language.Haskell.TH) where
 import Language.Haskell.TH
 
 -- General combinator for class derivation
@@ -37,3 +37,12 @@ conData c = case c of
   ForallC _ _ c'   -> conData c'
 
 
+x :: IO Type
+x = runQ $ (toType ''(,)) 
+  
+
+toType n = case lookup n tups of
+  Nothing -> conT n
+  Just q  -> q
+
+tups = (''(), [t|()|]):map (\(n,i) -> (n, tupleT i)) (zip [''(,), ''(,,)] [2..])

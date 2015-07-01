@@ -1,9 +1,13 @@
-module Control.Sized.Enumerable 
+{-#LANGUAGE TemplateHaskell#-}
+module Control.Enumerable 
   ( Enumerable(..)
   -- * Class based construction
   , datatype, c0, c1, c2, c3, c4, c5, c6, c7
   -- * Access
   , global, local
+  
+  -- * Automatic derivation
+  , deriveEnumerable
   
   -- * Non-class construction
   , access, share, Shared, Shareable, Typeable, module Control.Sized
@@ -17,9 +21,12 @@ import Data.Bits
 import Data.Word
 import Data.Int
 import Data.Ratio
+import Control.Enumerable.Derive hiding (global)
 
 instance (Typeable f, Sized f) => Sized (Shareable f) where
-  pay = Shareable . fmap pay . run
+  pay       = Shareable . fmap pay . run
+  fin       = Shareable . const . fin
+  pair x y  = Shareable $ \r -> pair (run x r) (run y r)
 
 class Typeable a => Enumerable a where
   enumerate :: (Typeable f, Sized f) => Shared f a
@@ -30,6 +37,7 @@ datatype = share . pay . aconcat
 access :: (Enumerable a, Sized f, Typeable f) => Shareable f a
 access = unsafeAccess enumerate
 
+{-#INLINE local#-}
 local :: (Typeable f, Sized f, Enumerable a) => f a
 local = run access (unsafeNewRef ())
 
@@ -123,7 +131,7 @@ instance Enumerable Char where
 instance Enumerable Float where
   enumerate = share $ c2 $ \b a -> encodeFloat a (fromIntegral (b :: Int8))
 
--- | Not a prober injection
+-- | Not a proper injection
 instance Enumerable Double where
   enumerate = share $ encodeFloat <$> access <*> e where
     e = negate <$> enumerateBounded (-1) (-lo)  <|> enumerateBounded 0 hi
@@ -159,7 +167,7 @@ instance Enumerable Printable where
   enumerate = share $ fmap Printable $ enumerateBounded 32 126
 
 enumerateBounded :: (Sized f, Enum a) => Int -> Int -> f a
-enumerateBounded lo hi = trans <$> finBits (toInteger (hi - lo)) where
+enumerateBounded lo hi = trans <$> finSized (toInteger (hi - lo)) where
   trans i = toEnum $ fromInteger (toInteger lo + i)
 
 
@@ -183,7 +191,7 @@ word = let e = fromInteger <$> kbits (bitSize' e) in e
 
 int :: (FiniteBits a, Integral a, Sized f) => f a 
 int = let e = fromInteger <$> kbs <|> (\n -> fromInteger (-n-1)) <$> kbs
-          kbs = kbits (bitSize' e - 1)
+          kbs = finSized (2^(bitSize' e - 1))
       in e
 
 
@@ -210,4 +218,45 @@ instance CoEnumerable a => CoEnumerable [a] where
     \uf cf xs -> case xs of 
        []      -> uf
        (x:xs)  -> cf x xs
+
+
+
+
+
+
+deriveEnumerable :: Name -> Q [Dec]
+deriveEnumerable = deriveEnumerable' . dAll
+
+
+type ConstructorDeriv = (Name, [(Name, ExpQ)])
+dAll :: Name -> ConstructorDeriv
+dAll n = (n,[])
+dExcluding :: Name -> ConstructorDeriv -> ConstructorDeriv
+dExcluding n (t,nrs) = (t,(n,[|empty|]):nrs)
+dExcept :: Name -> ExpQ -> ConstructorDeriv -> ConstructorDeriv
+dExcept n e (t,nrs) = (t,(n,e):nrs)
+
+-- | Derive an instance of Enumberable with Template Haskell, with 
+-- rules for some specific constructors
+deriveEnumerable' :: ConstructorDeriv -> Q [Dec]
+deriveEnumerable' (n,cse) =
+  fmap return $ instanceFor ''Enumerable [enumDef] n 
+  where
+    enumDef :: [(Name,[Type])] -> Q Dec
+    enumDef cons = do
+      sanityCheck
+      fmap mk_freqs_binding [|datatype $ex |] 
+      where
+        ex = listE $ map cone cons
+        cone xs@(n,_) = maybe (cone' xs) id $ lookup n cse
+        cone' (n,[]) = [|c0 $(conE n)|]
+        cone' (n,_:vs) = 
+          [|c1 $(foldr appE (conE n) (map (const [|uncurry|] ) vs) )|]
+        mk_freqs_binding :: Exp -> Dec
+        mk_freqs_binding e = ValD (VarP 'enumerate ) (NormalB e) []
+        sanityCheck = case filter (`notElem` map fst cons) (map fst cse) of
+          [] -> return ()
+          xs -> error $ "Invalid constructors for "++show n++": "++show xs
+        
+
 
