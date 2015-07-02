@@ -83,6 +83,18 @@ instance Enumerable () where
 instance (Enumerable a, Enumerable b) => Enumerable (a,b) where
   enumerate = share $ pair access access -- Pairs are free
 
+instance (Enumerable a, Enumerable b, Enumerable c) => Enumerable (a,b,c) where
+  enumerate = share $ c1 $ \(a,(b,c)) -> (a,b,c)
+
+instance (Enumerable a, Enumerable b, Enumerable c, Enumerable d) 
+             => Enumerable (a,b,c,d) where
+  enumerate = share $ c1 $ \(a,(b,(c,d))) -> (a,b,c,d)
+
+instance (Enumerable a, Enumerable b, Enumerable c, Enumerable d, Enumerable e) 
+             => Enumerable (a,b,c,d,e) where
+  enumerate = share $ c1 $ \(a,(b,(c,(d,e)))) -> (a,b,c,d,e)
+
+
 instance Enumerable Bool where
   enumerate = datatype [pure False, pure True]
 

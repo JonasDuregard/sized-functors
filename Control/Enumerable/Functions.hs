@@ -1,4 +1,4 @@
-{-#LANGUAGE GADTs, TypeOperators, DeriveDataTypeable #-}
+{-#LANGUAGE GADTs, TypeOperators, DeriveDataTypeable, DeriveFunctor, StandaloneDeriving #-}
 
 module Control.Enumerable.Functions where
 
@@ -9,6 +9,7 @@ import Control.Enumerable.Count
 
 import Control.Monad(msum)
 import Data.List(intercalate)
+import Data.Either(partitionEithers)
 
 -- | Type alias for avoiding TypeOperators.
 type Function a b = a :-> b
@@ -18,25 +19,61 @@ data a :-> b where
   Constant    :: b -> (a :-> b)
   Case        :: [Pattern a b] -> (a :-> b)
   Uncurry     :: (a :-> (b :-> c)) -> ((a,b) :-> c)
-  deriving Typeable
+  deriving (Typeable)
 
 -- | Case alternatives matching on values of type a, mapping to values of type b
 data Pattern a b where
   Pattern :: (String,Int) -> (a -> Maybe x) -> (x :-> b) -> Pattern a b
   NilPat  :: String -> (a -> Bool) -> b -> Pattern a b
-  deriving Typeable
+  deriving (Typeable)
+
+deriving instance Functor ((:->) a)
+deriving instance Functor (Pattern a)
+
+rhss :: (a :-> b) -> [b]
+rhss (Constant x) = [x]
+rhss (Case ps)    = concatMap rhsPattern ps
+rhss (Uncurry f)  = concatMap rhss (rhss f)
+
+rhsPattern :: Pattern a b -> [b]
+rhsPattern (Pattern _ _ f)     = rhss f
+rhsPattern (NilPat _ _ x)  = [x] 
+
+-- Is this function minimal in the sense that it has no "false" case distinctions (yielding the same value for all cases)
+mini :: Eq b => Function a b -> Bool
+mini = either (const True) id . miniF
+
+miniF :: Eq b => Function a b -> Either b Bool
+miniF (Constant x) = Left x
+miniF (Case ps)    = miniP ps
+miniF (Uncurry f)  = resolve $ map miniF $ rhss f
+
+miniP :: Eq b => [Pattern a b] -> Either b Bool
+miniP ps = resolve (map minP ps)
+  where  minP :: Eq b => Pattern a b -> Either b Bool
+         minP (NilPat _ _ x)   = Left x
+         minP (Pattern _ _ f)  = miniF f
+
+resolve :: Eq b => [Either b Bool] -> Either b Bool
+resolve ebs = case bs of
+  [] -> case xs of  -- There are only leafs
+    [x]    -> Left x
+    (x:xs) -> Right $ not $ all (x ==) xs
+  _  -> Right (and bs) -- All subpatterns are minimal
+  where  (xs,bs) = partitionEithers ebs
+
 
 instance Show b => Show (a :-> b) where
   show (Constant a) = "\\_ -> " ++ show a
-  show (Case ps)   = (++ "  ") $ unlines $ 
+  show (Case ps)   = unlines $ 
      ["\\x -> case x of "
      ] ++ map ("  "++) (concatMap (lines . show) ps)
 --  show (Uncurry (Constant (Constant f))) = "\\(_,_) -> " ++ show f 
-  show (Uncurry f) = "uncurry (" ++ show f ++ ")"
+  show (Uncurry f) = "uncurry (" ++ show f ++ "  )"
 
 instance Show b => Show (Pattern a b) where
   show (Pattern (s,k) _ f) =   unwords (s:take k names) 
-                           ++  " -> (" ++ show f ++ ") " 
+                           ++  " -> (" ++ show f ++ "  ) " 
                            ++  stuple (take k names)
   show (NilPat s _ f)  = s ++  " -> " ++ show f
 
@@ -52,9 +89,13 @@ Uncurry f $$ (a,b)  = f $$ a $$ b
 
 match :: (Pattern a b) -> a -> Maybe b
 match (Pattern _ p f) = fmap (f $$) . p
+match (NilPat _ p f)  = \a -> if p a then Just f else Nothing
 
 instance (Enumerable b, Parameter a) => Enumerable (a :-> b) where
   enumerate = functions
+
+
+
 
 -- | A class of types that can be used as parameters to enumerable functions
 class Typeable a => Parameter a where
@@ -93,12 +134,6 @@ instance Parameter a => Parameter [a] where
                      -- listToMaybe [(h,t)|let h:t = xs]
 
 
-type T = [[Bool]] :-> [Bool]
-
-c = count (global :: Count T)
-fs = runValues (global :: Values T)
-
-
 p0 :: String -> (a -> Bool) -> b -> Pattern a b
 p0 s f b = NilPat s f b
 
@@ -112,3 +147,4 @@ p3 :: String -> (a -> Maybe (x1,x2,x3)) -> ((x1,x2,x3) :-> b) -> Pattern a b
 p3 s = Pattern (s,3)
 
 -- ...
+

@@ -25,6 +25,7 @@ library
     Control.Enumerable,
     Control.Enumerable.Count, 
     Control.Enumerable.Values
+	Control.Enumerable.Functions
 --    Control.Sized.Free, 
 --    Control.Sized.Free.Condensed, 
 --    Control.Sized.Free.Complete

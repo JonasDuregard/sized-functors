@@ -2,11 +2,11 @@
 
 module Control.Enumerable.Count where
 
+import Control.Enumerable
 import Control.Sized
 import Data.Monoid(Monoid(..))
 import Data.List
 import Data.Typeable(Typeable)
-
 
 -- The type is just a phantom
 newtype Count a = Count {count :: [Integer]} deriving Typeable
@@ -15,6 +15,9 @@ newtype Count a = Count {count :: [Integer]} deriving Typeable
 -- Switch phantom type
 untyped :: Count a -> Count b
 untyped (Count x) = Count x
+
+countparam :: Enumerable a => f a -> Count a
+countparam _ = global
 
 compact :: Count a -> Count a
 compact = Count . reverse . dropWhile (==0) . reverse . count
