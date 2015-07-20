@@ -76,10 +76,11 @@ c7 f = c6 (uncurry f)
 -- More than seven constructor components? Uncurry your constructor!
 
 
-
+-- | The unit constructor is free
 instance Enumerable () where
-  enumerate = share (pay $ pure ())
+  enumerate = share (pure ())
 
+-- All tuple constructors are free
 instance (Enumerable a, Enumerable b) => Enumerable (a,b) where
   enumerate = share $ pair access access -- Pairs are free
 
