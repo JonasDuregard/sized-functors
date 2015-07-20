@@ -2,10 +2,14 @@
 
 module Control.Enumerable.Functions
  ( (:->)
+ , ($$)
+ -- * Type class
  , Parameter(..)
  , signature, p0, p1, p2, p3, p4, p5
  -- * Various
  , Function
+ , isMinimal
+ , rhss
  )where
 
 import Control.Sized
@@ -39,18 +43,19 @@ data Pattern a b where
 deriving instance Functor ((:->) a)
 deriving instance Functor (Pattern a)
 
+-- | Returns all constants assigned to right hand side values of pattern matches
 rhss :: (a :-> b) -> [b]
 rhss (Constant x) = [x]
 rhss (Case ps)    = concatMap rhsPattern ps
 rhss (Uncurry f)  = concatMap rhss (rhss f)
 
 rhsPattern :: Pattern a b -> [b]
-rhsPattern (Pattern _ _ f)     = rhss f
-rhsPattern (NilPat _ _ x)  = [x] 
+rhsPattern (Pattern _ _ f)  = rhss f
+rhsPattern (NilPat _ _ x)   = [x] 
 
--- Is this function minimal in the sense that it has no "false" case distinctions (yielding the same value for all cases)
-mini :: Eq b => Function a b -> Bool
-mini = either (const True) id . miniF
+-- | Is this function minimal in the sense that it has no "false" case distinctions (yielding the same value for all cases)
+isMinimal :: Eq b => Function a b -> Bool
+isMinimal = either (const True) id . miniF
 
 miniF :: Eq b => Function a b -> Either b Bool
 miniF (Constant x) = Left x
@@ -162,6 +167,9 @@ showMatches sh n ps = (indent $ concat sss, unif bs) where
   pad s = take ml $ s ++ repeat ' '
   ml = maximum ls
 
+
+
+infixl 4 $$
 
 -- | Function application
 ($$) :: (a :-> b) -> a -> b
