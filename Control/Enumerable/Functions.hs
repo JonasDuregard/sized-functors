@@ -34,9 +34,12 @@ data a :-> b where
 
 infixr 5 :->
 
+instance Show b => Show (a :-> b) where
+  show = showFun
+
 -- | Case alternatives matching on values of type a, mapping to values of type b
 data Pattern a b where
-  Pattern :: (String,Int) -> (a -> Maybe x) -> (x :-> b) -> Pattern a b
+  Pattern :: ([PatPrint] -> PatPrint,Int) -> (a -> Maybe x) -> (x :-> b) -> Pattern a b
   NilPat  :: String -> (a -> Bool) -> b -> Pattern a b
   deriving (Typeable)
 
@@ -76,99 +79,6 @@ resolve ebs = case bs of
   _  -> Right (and bs) -- All subpatterns are minimal
   where  (xs,bs) = partitionEithers ebs
 
-
-instance Show b => Show (a :-> b) where
-  show            = showFunction
-  showsPrec p f   = showParen True (showFunction f ++)
-
-
-data Binding = Pair Binding Binding
-             | Var String
-             | Wild
-
--- Unify patterns on the same sequence of values
-unif :: [[Binding]] -> [Binding]
-unif = map unif' . transpose where
-  unif' :: [Binding] -> Binding
-  unif' = foldr greatest Wild
-  greatest :: Binding -> Binding -> Binding
-  greatest Wild x                   = x
-  greatest y Wild                   = y
-  greatest (Var x) (Var y) | x == y = Var x
-  greatest (Pair x y) (Pair a b)    = mkPair (greatest x a) (greatest y b)
-
-uncurried :: [Binding] -> [Binding]
-uncurried []         = []
-uncurried [x]        = [mkPair x Wild]
-uncurried (x:y:xys)  = mkPair x y : xys
-
-mkPair Wild Wild = Wild
-mkPair x y = Pair x y
-
-singbind :: [Binding] -> Binding
-singbind []   = Wild
-singbind [x]  = x
-
-var n = 'x':show n
-var' n = ' ' : var n
-
-
-instance Show Binding where
-  show Wild = "_"
-  show (Var s) = s
-  show (Pair b1 b2) = "("++show b1++","++show b2++")"
-
-conBinding :: Int -> Binding -> [String]
-conBinding 1 b = [show b]
-conBinding n Wild = replicate n "_"
-conBinding n (Pair b1 b2) = show b1 : conBinding (n-1) b2
-
-
--- The int is the number of variables in scope.
-type Shower x = Int -> x -> ([String],[Binding])
-
-indent ss = map ("  " ++) ss
-
-
-
-showFunction :: Show b => (a :-> b) -> String
-showFunction = renderTop . showUncurry showBase 0
-
-showBase :: Show a => Shower a
-showBase _ x = (lines (show x),[])
-
-
-
-showUncurry :: Shower b -> Shower (a :-> b)
-showUncurry sh s (Constant f)  = fmap (Wild:) $ sh s f
-showUncurry sh s (Uncurry f)   = fmap uncurried $ showUncurry (showUncurry sh) s f
-showUncurry sh s (Case ps)     = (ss,Var (var s) : bs) where
-  (sss,bs) = showMatches sh (s+1) ps
-  ss = ("case " ++ var s ++ " of"): sss
-
-
-renderTop :: ([String],[Binding]) -> String
-renderTop (ss,b) = "\\" ++ show (singbind b) ++ " -> " ++ init (unlines ss)
-
-
-showMatches :: Shower b -> Shower [Pattern a b]
-showMatches sh n ps = (indent $ concat sss, unif bs) where
-  (sss,bs,ls) = unzip3 (map (showMatch sh n) ps)
-  
-  showMatch sh n (NilPat s _ f) = ((pad s ++ " -> " ++ x):xs,bs,length s) where
-    ((x:xs),bs) = sh n f
-  showMatch sh n (Pattern (s,k) _ f) = (ss,bs,length spat) where
-    ss = (pad spat ++ " -> " ++ sf) : ssf
-    bs = drop 1 bsf
-    pat = head (bsf ++ [Wild])
-    spat = s ++ " " ++ unwords (conBinding k pat)
-    (sf:ssf,bsf) = showUncurry sh n f
-
-  pad s = take ml $ s ++ repeat ' '
-  ml = maximum ls
-
-
-
 infixl 4 $$
 
 -- | Function application
@@ -195,6 +105,8 @@ signature :: (Typeable a, Enumerable x, Enumerable b, Typeable f, Sized f)
 signature f = share (fmap Constant access <|> pay ps) 
   where ps = fmap (Case . f) access -- :: f [Pattern a b]
 
+-- signatureF f = share (fmap Constant access <|> ps) 
+--  where ps = fmap (Case . f) access
 
 showPat :: (Eq a, Show a) => a -> b -> Pattern a b
 showPat a b = NilPat (show a) (==a) b
@@ -206,14 +118,15 @@ instance (Parameter a, Parameter b) => Parameter (a,b) where
   functions = share $ fmap Uncurry access
 
 instance (Parameter a, Parameter b, Parameter c) => Parameter (a,b,c) where
-  functions = signature $ \f -> [p3 "(,,)" Just f]
+  functions = signature $ \f -> [pTuple 3 Just f]
 
 instance (Parameter a, Parameter b, Parameter c, Parameter d) => Parameter (a,b,c,d) where
-  functions = signature $ \f -> [p4 "(,,,)" Just f]
+  functions = signature $ \f -> [pTuple 4 Just f]
 
 instance (Parameter a, Parameter b, Parameter c, Parameter d, Parameter e) => Parameter (a,b,c,d,e) where
-  functions = signature $ \f -> [p5 "(,,,,)" Just f]
+  functions = signature $ \f -> [pTuple 5 Just f]
 
+pTuple k = Pattern (\ss _ -> "("++intercalate "," (map ($ False) ss) ++ ")", k) 
 
 
 instance (Parameter a, Parameter b) => Parameter (Either a b) where
@@ -228,8 +141,8 @@ instance Parameter Bool where
     where go (f,g) = [showPat False f, showPat True g]
 
 instance Parameter a => Parameter [a] where
-  functions = signature go
-    where go (f,g) = [p0 "[]" null f, p2 "(:)" extCons g]
+  functions = signature go 
+    where go (f,g) = [p0 "[]" null f, Pattern (\[s1,s2] -> parenPrt $ s1 True ++ ":" ++ s2 True,2) extCons g]
           extCons xs = do h:t <- return xs ; return (h,t) -- Nicer way to write patterns? LC + listToMaybe?
                      -- listToMaybe [(h,t)|let h:t = xs]
 
@@ -248,27 +161,30 @@ instance Parameter Three where
 type TestType = (Bool,Bool,Either () ()) :-> ()
 tst1 n = values n :: [TestType]
 
+dPattern :: (String,Int) -> (a -> Maybe x1) -> (x1 :-> b) -> Pattern a b
+dPattern (s,k) = Pattern (\bss -> parenPrt $ s ++ " " ++ unwords (map ($ True) bss),k)
+
 
 
 p0 :: String -> (a -> Bool) -> b -> Pattern a b
 p0 s f b = NilPat s f b
 
 p1 :: String -> (a -> Maybe x1) -> (x1 :-> b) -> Pattern a b
-p1 s = Pattern (s,1)
+p1 s = dPattern (s,1)
 
 p2 :: String -> (a -> Maybe (x1,x2)) -> ((x1,x2) :-> b) -> Pattern a b
-p2 s = Pattern (s,2)
+p2 s = dPattern (s,2)
 
 p3 :: String -> (a -> Maybe (x1,x2,x3)) -> ((x1,(x2,x3)) :-> b) -> Pattern a b
-p3 s e = Pattern (s,3) (fmap (fmap flop) e) where
+p3 s e = dPattern (s,3) (fmap (fmap flop) e) where
   flop (a,b,c)      = (a,(b,c))
 
 p4 :: String -> (a -> Maybe (x1,x2,x3,x4)) -> ((x1,(x2,(x3,x4))) :-> b) -> Pattern a b
-p4 s e = Pattern (s,4) (fmap (fmap flop) e) where
+p4 s e = dPattern (s,4) (fmap (fmap flop) e) where
   flop (a,b,c,d)      = (a,(b,(c,d)))
 
 p5 :: String -> (a -> Maybe (x1,x2,x3,x4,x5)) -> ((x1,(x2,(x3,(x4,x5)))) :-> b) -> Pattern a b
-p5 s e = Pattern (s,5) (fmap (fmap flop) e) where
+p5 s e = dPattern (s,5) (fmap (fmap flop) e) where
   flop (a,b,c,d,e)      = (a,(b,(c,(d,e))))
 
 -- ...
@@ -276,6 +192,145 @@ p5 s e = Pattern (s,5) (fmap (fmap flop) e) where
 
 
 
+-- Showing functions
+
+showFun :: Show b => (a :-> b) -> String
+showFun = showLam . assign . toExpr
+
+
+data Binding v = Constr ([PatPrint] -> PatPrint) [Binding v]
+               | Pair (Binding v) (Binding v)
+               | Var v
+               | Wild
+
+instance Show v => Show (Binding v) where
+  show b = noP $ bindPrt b
+
+bindPrt :: Show v => Binding v -> PatPrint
+bindPrt Wild           = enumPrt "_"
+bindPrt (Var v)        = enumPrt (var v)
+bindPrt (Pair b1 b2)   = enumPrt $ "(" ++ noP (bindPrt b1) ++ ", " ++  noP (bindPrt b2) ++ ")"
+bindPrt (Constr p bs)  = p (map bindPrt bs)
+
+
+unif :: Eq v => [Binding v] -> Binding v
+unif = foldr greatest Wild where
+
+  greatest :: Eq v => Binding v -> Binding v -> Binding v
+  greatest Wild x                       = x
+  greatest y Wild                       = y
+  greatest (Var a) (Var b) | a == b     = Var a
+  greatest (Pair x y) (Pair a b)        = Pair (greatest x a) (greatest y b)
+  greatest (Constr f xs) (Constr _ ys)  = Constr f $ unifs [xs,ys]
+  
+  unifs :: Eq v => [[Binding v]] -> [Binding v]
+  unifs bs = map unif (transpose bs)
+
+
+data Expr v b  = CaseE v [(Binding v, Expr v b)]
+               | ResE b
+
+-- showFun = to
+
+showLam :: (Show v, Show b) => (Binding v, Expr v b) -> String
+showLam (b,e) = "\\" ++ yesP (bindPrt b) ++ " -> " ++ unlines (showExpr e)
+
+showExpr :: (Show v, Show b) => Expr v b -> [String]
+showExpr (ResE x)    = lines (show x)
+showExpr (CaseE k ps)  = ("case "++var k++" of") : indent (concatMap showMatcher ps) where
+  showMatcher (b,e) = (show b ++ " -> ") .++ showExpr e
+  s .++ (s2:ss) = (s++s2) : ss
+
+toExpr :: (a :-> b) -> (Binding (), Expr () b)
+toExpr (Case ps)     = (Var (), CaseE () $ map toExprP ps)
+toExpr (Constant x)  = (Wild, ResE x)
+toExpr (Uncurry f)   = (Pair b1 b2, e2) where
+  (b1,e1) = toExpr f
+  (b2,e2) = flat e1
+
+flat :: Expr () (a :-> b) -> (Binding (), Expr () b)
+flat (ResE f)      = toExpr f
+flat (CaseE v ms)  = (unif bs, CaseE v ms') where
+  (bs,ms') = unzip [(b1,(b2,e')) | (b2,e) <- ms, let (b1,e') = flat e]
+
+toExprP :: Pattern a b -> (Binding (), Expr () b)
+toExprP (NilPat s _ b) = (Constr (\_ -> enumPrt s) [], ResE b)
+toExprP (Pattern (s,n) _ f) = (Constr s (extr n b), e) where
+  (b,e) = toExpr f
+  extr n Wild          = replicate n Wild
+  extr 1 b             = [b]
+  extr n (Pair b1 b2)  = b1 : extr (n-1) b2
+
+
+
+
+type PatPrint = Bool -> String
+
+enumPrt :: String -> PatPrint
+enumPrt s = \_ -> s
+
+parenPrt :: String -> PatPrint
+parenPrt s b = if b then "(" ++ s ++ ")" else s
+
+var n = 'x':show n
+indent ss = map ("  " ++) ss
+
+noP :: PatPrint -> String
+noP f = f False
+
+yesP :: PatPrint -> String
+yesP f = f True
+
+
+
+
+newtype M a = M {runM :: [Int] -> [Int] -> ([Int],a)} deriving Functor
+instance Applicative M where
+  pure a     = M (\_ ss -> (ss,a))
+  fs <*> xs  = fs >>= (`fmap` xs)
+
+instance Monad M where
+  return   = pure
+  M m >>= f  = M g where
+    g a ss = h a ss' where
+      (ss',x) = m a ss
+      (M h) = f x
+  
+produce :: [Int] -> M a -> M a
+produce vs (M a) = M $ \xs ss -> a (vs ++ xs) ss
+
+consume :: (Int -> M a) -> M a
+consume f = M $ \(x:xs) ss -> runM (f x) xs ss 
+
+pop :: M Int
+pop = M (\_ (s:ss) -> (ss,s))
+
+
+assign :: (Binding (), Expr () b) -> (Binding Int, Expr Int b)
+assign e = snd $ runM (assignm e) [] [1..]
+
+assignM :: Expr () b -> M (Expr Int b)
+assignM (ResE x)      = pure $ ResE x
+assignM (CaseE v ms)  = consume $ \v -> do
+  ms' <- mapM assignm ms
+  return $ CaseE v ms'
+
+assignm :: (Binding (), Expr () b) -> M (Binding Int, Expr Int b)
+assignm (b,e) = do
+      (b',vs) <- bind b
+      e' <- produce vs $ assignM e
+      return (b',e')
+
+bind :: Binding () -> M (Binding Int, [Int])
+bind Wild            = return (Wild,[])
+bind (Var _)         = pop >>= \s -> return (Var s,[s])
+bind (Pair b1 b2)    = do
+  (b1',r1) <- bind b1
+  (b2',r2) <- bind b2
+  return $ (Pair b1' b2',r1++r2)
+bind (Constr pp bs)   = do
+  (bs', vss) <- fmap unzip (mapM bind bs)
+  return (Constr pp bs', concat vss)
 
 
 
