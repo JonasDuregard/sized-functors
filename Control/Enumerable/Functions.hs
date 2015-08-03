@@ -6,6 +6,7 @@ module Control.Enumerable.Functions
  -- * Type class
  , Parameter(..)
  , signature, p0, p1, p2, p3, p4, p5
+ , lets
  -- * Various
  , Function
  , isMinimal
@@ -28,6 +29,7 @@ type Function a b = a :-> b
 -- | Showable functions from a to b
 data a :-> b where
   Constant    :: b -> (a :-> b)
+  Let         :: (String -> String) -> (a -> x) -> (x :-> b) -> (a :-> b)
   Case        :: [Pattern a b] -> (a :-> b)
   Uncurry     :: (a :-> (b :-> c)) -> ((a,b) :-> c)
   deriving (Typeable)
@@ -50,6 +52,7 @@ deriving instance Functor (Pattern a)
 rhss :: (a :-> b) -> [b]
 rhss (Constant x) = [x]
 rhss (Case ps)    = concatMap rhsPattern ps
+rhss (Let _ _ f)  = rhss f
 rhss (Uncurry f)  = concatMap rhss (rhss f)
 
 rhsPattern :: Pattern a b -> [b]
@@ -60,9 +63,10 @@ rhsPattern (NilPat _ _ x)   = [x]
 isMinimal :: Eq b => Function a b -> Bool
 isMinimal = either (const True) id . miniF
 
-miniF :: Eq b => Function a b -> Either b Bool
+miniF :: Eq b => (a :-> b) -> Either b Bool
 miniF (Constant x) = Left x
 miniF (Case ps)    = miniP ps
+miniF (Let _ _ f)  = miniF f
 miniF (Uncurry f)  = resolve $ map miniF $ rhss f
 
 miniP :: Eq b => [Pattern a b] -> Either b Bool
@@ -85,6 +89,7 @@ infixl 4 $$
 ($$) :: (a :-> b) -> a -> b
 Constant a $$ b     = a
 Case ps $$ b        = maybe (error "Incomplete pattern") id $ msum [match p b | p <- ps]
+Let _ f g $$ b      = g $$ (f b)
 Uncurry f $$ (a,b)  = f $$ a $$ b
 
 match :: (Pattern a b) -> a -> Maybe b
@@ -105,8 +110,14 @@ signature :: (Typeable a, Enumerable x, Enumerable b, Typeable f, Sized f)
 signature f = share (fmap Constant access <|> pay ps) 
   where ps = fmap (Case . f) access -- :: f [Pattern a b]
 
--- signatureF f = share (fmap Constant access <|> ps) 
---  where ps = fmap (Case . f) access
+
+lets :: (Parameter x, Enumerable b, Sized f, Typeable f, Typeable a) => 
+           String -> (a -> x) -> Shared f (a :-> b)
+lets s = lets' ((s ++ " ")++)
+
+lets' :: (Parameter x, Enumerable b, Sized f, Typeable f, Typeable a) => 
+           (String -> String) -> (a -> x) -> Shared f (a :-> b)
+lets' s f = share $ fmap (Let s f) access 
 
 showPat :: (Eq a, Show a) => a -> b -> Pattern a b
 showPat a b = NilPat (show a) (==a) b
@@ -151,15 +162,13 @@ instance Parameter a => Parameter (Maybe a) where
     where go (f,g) = [p0 "Nothing" (maybe True (const False)) f, p1 "Just" id g]
 
 
-data Three = Three Bool (Either Bool Bool) [Bool]
+instance Parameter Int where
+  functions = lets' str fun where
+    str i = "replicate (2*abs "++i++" - fromEnum ("++i++" > 0)) ()"
+    fun i = replicate (2*abs i - fromEnum (i > 0)) ()
 
-instance Parameter Three where
-  functions = signature go where
-    go f = [p3 "Three" extr f]
-    extr (Three a b c) = Just (a,b,c)
 
-type TestType = (Bool,Bool,Either () ()) :-> ()
-tst1 n = values n :: [TestType]
+
 
 dPattern :: (String,Int) -> (a -> Maybe x1) -> (x1 :-> b) -> Pattern a b
 dPattern (s,k) = Pattern (\bss -> parenPrt $ s ++ " " ++ unwords (map ($ True) bss),k)
@@ -229,28 +238,41 @@ unif = foldr greatest Wild where
 
 data Expr v b  = CaseE v [(Binding v, Expr v b)]
                | ResE b
+               | LetE (Binding v) (String -> String) v (Expr v b)
 
--- showFun = to
 
 showLam :: (Show v, Show b) => (Binding v, Expr v b) -> String
 showLam (b,e) = "\\" ++ yesP (bindPrt b) ++ " -> " ++ unlines (showExpr e)
 
 showExpr :: (Show v, Show b) => Expr v b -> [String]
-showExpr (ResE x)    = lines (show x)
-showExpr (CaseE k ps)  = ("case "++var k++" of") : indent (concatMap showMatcher ps) where
-  showMatcher (b,e) = (show b ++ " -> ") .++ showExpr e
-  s .++ (s2:ss) = (s++s2) : ss
+showExpr (ResE x)        = lines (show x)
+showExpr (LetE b p v e)  = ("let "++show b++" = " ++ p (var v) ++ " in ")
+                           : indent (showExpr e)
+showExpr (CaseE k ps)    = ("case "++var k++" of") : indent sps where
+  (bs,es) = unzip ps
+  sbs = pad (map show bs)
+  ses = map (\e -> " -> " .++ showExpr e) es
+  sps = concat $ zipWith (.++) sbs ses
+  
+  -- showMatcher (b,e)  = (show b ++ " -> ") .++ showExpr e
+  s .++ (s2:ss)      = (s++s2) : ss
+  
+  pad ss = let m = maximum (map length ss) in map (take m . (++ repeat ' ')) ss
 
 toExpr :: (a :-> b) -> (Binding (), Expr () b)
 toExpr (Case ps)     = (Var (), CaseE () $ map toExprP ps)
+toExpr (Let p _ f)   = case toExpr f of 
+  (Wild, e) -> (Wild, e)
+  (b,e)     -> (Var (), LetE b p () e)
 toExpr (Constant x)  = (Wild, ResE x)
 toExpr (Uncurry f)   = (Pair b1 b2, e2) where
   (b1,e1) = toExpr f
   (b2,e2) = flat e1
 
 flat :: Expr () (a :-> b) -> (Binding (), Expr () b)
-flat (ResE f)      = toExpr f
-flat (CaseE v ms)  = (unif bs, CaseE v ms') where
+flat (ResE f)        = toExpr f
+flat (LetE b p v e)  = fmap (LetE b p v) (flat e)
+flat (CaseE v ms)    = (unif bs, CaseE v ms') where
   (bs,ms') = unzip [(b1,(b2,e')) | (b2,e) <- ms, let (b1,e') = flat e]
 
 toExprP :: Pattern a b -> (Binding (), Expr () b)
@@ -310,8 +332,12 @@ assign :: (Binding (), Expr () b) -> (Binding Int, Expr Int b)
 assign e = snd $ runM (assignm e) [] [1..]
 
 assignM :: Expr () b -> M (Expr Int b)
-assignM (ResE x)      = pure $ ResE x
-assignM (CaseE v ms)  = consume $ \v -> do
+assignM (ResE x)       = pure $ ResE x
+assignM (LetE b p _ e) = consume $ \v -> do
+  (b',vs) <- bind b
+  e' <- produce vs $ assignM e
+  return (LetE b' p v e')
+assignM (CaseE _ ms)   = consume $ \v -> do
   ms' <- mapM assignm ms
   return $ CaseE v ms'
 
@@ -334,5 +360,21 @@ bind (Constr pp bs)   = do
 
 
 
+{-
+type TT = (Int, Bool) :-> Bool
+tst1 n = mapM_ print (zip [0..] (values n :: [TT]))
+
+f = (229,\(x1, x2) -> let x3 = replicate (2*abs x1 - fromEnum (x1 > 0)) () in
+  case x3 of
+    []   -> case x2 of
+      False -> True
+      True  -> False
+    _:x4 -> case x4 of
+      []  -> case x2 of
+        False -> True
+        True  -> False
+      _:_ -> True)
 
 
+p x = ((values 9 !! fst f) $$ x) == snd f x
+-}
