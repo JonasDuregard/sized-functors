@@ -255,6 +255,7 @@ showExpr (CaseE k ps)    = ("case "++var k++" of") : indent sps where
   sps = concat $ zipWith (.++) sbs ses
   
   -- showMatcher (b,e)  = (show b ++ " -> ") .++ showExpr e
+  s .++ []           = s:[] -- for show instances returning empty strings
   s .++ (s2:ss)      = (s++s2) : ss
   
   pad ss = let m = maximum (map length ss) in map (take m . (++ repeat ' ')) ss
