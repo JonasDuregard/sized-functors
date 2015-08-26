@@ -151,6 +151,9 @@ instance Parameter Bool where
   functions = signature go
     where go (f,g) = [showPat False f, showPat True g]
 
+instance Parameter Ordering where
+  functions = signature $ \(f,g,h) -> [showPat LT f, showPat EQ g, showPat GT h]
+
 instance Parameter a => Parameter [a] where
   functions = signature go 
     where go (f,g) = [p0 "[]" null f, Pattern (\[s1,s2] -> parenPrt $ s1 True ++ ":" ++ s2 True,2) extCons g]

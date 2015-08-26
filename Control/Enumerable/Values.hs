@@ -2,6 +2,7 @@
 module Control.Enumerable.Values
   ( values
   , values'
+  , allValues
   , Values (..)
   )  where
 
@@ -14,6 +15,13 @@ values = runValues global
 -- | Constructs all values up to a given size.
 values' :: Enumerable a => Int -> [[a]]
 values' i = let f = runValues global in [f x|x <- [0..i]]
+
+allValues :: Enumerable a => [[a]]
+allValues = aux global global where
+  aux :: Values a -> MaxSize a -> [[a]]
+  aux (Values f) (MaxSize m) = map f (zipWith const [0..] m)
+
+
 
 newtype Values a = Values {runValues :: Int -> [a]} deriving Typeable
 
@@ -39,6 +47,31 @@ instance Sized Values where
 
 
 
+
+-- Useful for detecting if an enumeration is finite. 
+data MaxSize a = MaxSize {runMaxSize :: [()]} deriving Show
+instance Functor MaxSize where fmap _ = MaxSize . runMaxSize
+
+instance Applicative MaxSize where 
+  pure _ = MaxSize [()]
+  MaxSize [] <*> _  = empty
+  _ <*> MaxSize []  = empty
+  f <*> x = MaxSize $ tail (runMaxSize f ++ runMaxSize x)
+
+instance Alternative MaxSize where
+  empty = MaxSize []
+  a <|> b = MaxSize (runMaxSize a `zipL` runMaxSize b) where
+    zipL [] x = x
+    zipL x [] = x
+    zipL (_:xs) (_:ys) = () : xs `zipL` ys
+
+
+instance Sized MaxSize where
+  pay = MaxSize . (():) . runMaxSize
+
+
+type TT = Bool --  [[[[[[[[[[Bool]]]]]]]]]]
+tst1 n = take n $ runMaxSize (local :: MaxSize TT)
 
 
 
