@@ -1,6 +1,11 @@
 {-#LANGUAGE DeriveDataTypeable#-}
 
-module Control.Enumerable.Count where
+module Control.Enumerable.Count (
+  Count(..), 
+  (!!*),
+  (</>),
+  module Control.Enumerable
+  ) where
 
 import Control.Enumerable
 import Control.Sized
@@ -8,20 +13,21 @@ import Data.Monoid(Monoid(..))
 import Data.List
 import Data.Typeable(Typeable)
 
--- The type is just a phantom
-newtype Count a = Count {count :: [Integer]} deriving Typeable
-  -- deriving (Arbitrary)
+-- | Counts the number of values of a all sizes. Usage: @global :: Count [Bool]
+newtype Count a = Count {count :: [Integer]} deriving (Typeable, Show)
+
 
 -- Switch phantom type
 untyped :: Count a -> Count b
 untyped (Count x) = Count x
 
-countparam :: Enumerable a => f a -> Count a
-countparam _ = global
+-- countparam :: Enumerable a => f a -> Count a
+-- countparam _ = global
 
 compact :: Count a -> Count a
 compact = Count . reverse . dropWhile (==0) . reverse . count
 
+-- | Counts the number of values of a given size, 0 if out of bounds. 
 (!!*) :: Count a -> Int -> Integer
 (Count []) !!* n = 0
 (Count (x:xs)) !!* n | n < 0  = 0
@@ -29,13 +35,13 @@ compact = Count . reverse . dropWhile (==0) . reverse . count
                         | otherwise = Count xs !!* (n-1)
 
 -- Undecidable for some 0-lists, for instance datatype with only infinite values
-instance Eq (Count a) where 
-  a == b = f a == f b 
-    where f = count . compact
+-- instance Eq (Count a) where 
+--  a == b = f a == f b 
+--    where f = count . compact
 
 -- Typically infinite, perhaps it should have some hard-coded limit.
-instance Show (Count a) where
-  show = show . count
+--instance Show (Count a) where
+--  show = show . count
 
 
 instance Functor Count where

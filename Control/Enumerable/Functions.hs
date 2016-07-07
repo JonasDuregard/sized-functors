@@ -85,7 +85,7 @@ resolve ebs = case bs of
 
 infixl 4 $$
 
--- | Function application
+-- | Function application (converts a :-> function to a -> function)
 ($$) :: (a :-> b) -> a -> b
 Constant a $$ b     = a
 Case ps $$ b        = maybe (error "Incomplete pattern") id $ msum [match p b | p <- ps]
@@ -363,22 +363,3 @@ bind (Constr pp bs)   = do
   return (Constr pp bs', concat vss)
 
 
-
-{-
-type TT = (Int, Bool) :-> Bool
-tst1 n = mapM_ print (zip [0..] (values n :: [TT]))
-
-f = (229,\(x1, x2) -> let x3 = replicate (2*abs x1 - fromEnum (x1 > 0)) () in
-  case x3 of
-    []   -> case x2 of
-      False -> True
-      True  -> False
-    _:x4 -> case x4 of
-      []  -> case x2 of
-        False -> True
-        True  -> False
-      _:_ -> True)
-
-
-p x = ((values 9 !! fst f) $$ x) == snd f x
--}

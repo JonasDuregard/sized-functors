@@ -1,4 +1,21 @@
 {-#LANGUAGE TemplateHaskell#-}
+
+{-| 
+This module provides the 'Enumerable' class, which has a simple purpose: Provide any enumeration for any instance type. The prerequisite is that the enumeration data type is a sized functor (see "Control.Sized") with the enumerated type as the type parameter. The general idea is that the size of a value is the number of constructor applications it contains. 
+
+Because Sized functors often rely of memoization, sharing is important. Since class dictionaries are not always shared, a mechanism is added that guarantees optimal sharing (it never creates two separate instance members for the same type). This is why the type of 'enumerate' is @Shared f a@ instead of simply @f a@. The technicalities of this memoization are not important, but it means there are two modes for accessing an enumeration: 'local' and 'global'. The former means sharing is guaranteed within this value, but subsequent calls to local may recreate dictionaries. The latter guarantees optimal sharing even between calls. It also means the enumeration will never be garbage collected, so use with care in programs that run for extended periods of time and contains many (especially non-regular) types. 
+
+Once a type has an instance, it can be enumerated in several ways (by instantiating 'global' to different types). For instance @global :: Count [Maybe Bool]@ would only count the number of lists of Maybe Bool of each size (using "Control.Enumerable.Count"). @global :: Values [Maybe Bool] would give the actual values for all sizes as lists. See <https://hackage.haskell.org/package/testing-feat FEAT> for a more elaborate enumeration type that allows access to any value in the enumeration (given an index) in polynomial time, uniform selection from a given size etc. 
+
+Instances can be constructed in three ways:
+
+1: Manually by passing 'datatype' a list where each element is an application of the constructor functions 'c0', 'c1' etc, so a data type like Maybe would have @enumerate = datatype [c0 Nothing, c1 Just]@. This assumes all field types of all constructors are enumerable (recursive constructors work fine). The functions passed to @cX@ do not have to be constructors, but should be injective functions (if they are not injective the enumeration will contain duplicates). So "smart constructors" can be used, for instance the @Rational@ datatype is defined by an injection from the natural numbers. 
+
+2: Automatically with Template Haskell ('deriveEnumerable'). A top level declaration like @deriveEnumerable ''Maybe@ would derive an instance for the @Maybe@ data type. 
+
+3: Manually using the operations of a sized functor (see "Control.Sized") to build a @Shareable f a@ value, then apply 'share' to it. To use other instances of 'Enumerable' use 'access'. 
+
+-}
 module Control.Enumerable 
   ( Enumerable(..)
   -- * Class based construction
@@ -8,9 +25,16 @@ module Control.Enumerable
   
   -- * Automatic derivation
   , deriveEnumerable
+  , dAll, dExcluding, dExcept, ConstructorDeriv, deriveEnumerable'
   
   -- * Non-class construction
   , access, share, Shared, Shareable, Typeable, module Control.Sized
+  
+  -- * Enumerating functions
+  , function, CoEnumerable(..)
+  
+  -- * Other stuff (required for instances)
+  , Infinite
   )where
 import Control.Sized
 import Data.ClassSharing
@@ -31,12 +55,12 @@ instance (Typeable f, Sized f) => Sized (Shareable f) where
 class Typeable a => Enumerable a where
   enumerate :: (Typeable f, Sized f) => Shared f a
 
-datatype :: (Typeable a, Sized f, Typeable f) => [Shareable f a] -> Shared f a
-datatype = share . pay . aconcat
 
+-- | Used instead of enumerate when manually building instances.
 access :: (Enumerable a, Sized f, Typeable f) => Shareable f a
 access = unsafeAccess enumerate
 
+-- | Guarantees local sharing. All enumerations are shared inside each invokation of local, but may not be shared between them. 
 {-#INLINE local#-}
 local :: (Typeable f, Sized f, Enumerable a) => f a
 local = run access (unsafeNewRef ())
@@ -45,13 +69,20 @@ local = run access (unsafeNewRef ())
 gref :: Ref
 gref = unsafeNewRef ()
 
+-- | This is the primary way to access enumerations for usage. Guarantees global sharing of enumerations of the same type. Note that this means the enumerations are never garbage collected. 
 global :: (Typeable f, Sized f, Enumerable a) => f a
 global = run access gref
 
+-- | Builds an enumeration of a data type from a list of constructors (see c0-c7)
+datatype :: (Typeable a, Sized f, Typeable f) => [Shareable f a] -> Shared f a
+datatype = share . pay . aconcat
 
+
+-- | Takes a constructor with arity 0 (a pure value)
 c0 :: Sized f => a -> Shareable f a
 c0 = pure
 
+-- | Takes a constructor of arity 1
 c1 :: (Enumerable a, Sized f, Typeable f) => (a -> x) -> Shareable f x
 c1 f = fmap f access
 
@@ -150,8 +181,12 @@ instance Enumerable Double where
     e = negate <$> enumerateBounded (-1) (-lo)  <|> enumerateBounded 0 hi
     (lo,hi) = floatRange (0 :: Double) 
 
+
+-- | A class of infinite precision integral types. 'Integer' is the principal 
+-- class member.
 class (Typeable a, Integral a) => Infinite a
 instance Infinite Integer
+
 
 instance Infinite a => Enumerable (Ratio a) where
   enumerate = share (c1 $ rat . nat)
@@ -164,13 +199,7 @@ rat i = go 1 1 i where
   go a b i = let (i',m) = i `divMod` 2 in if m == 1 then go (a+b) b i' else go a (a +b) i'
 
 
-
--- | A class of infinite precision integral types. 'Integer' is the principal 
--- class member.
-
 -- From Data.Modifiers:
-
-
 instance Enumerable Unicode where
   enumerate = datatype [fmap Unicode $ enumerateBounded 
     (fromEnum (minBound :: Char)) 
@@ -214,14 +243,17 @@ bitSize' f = hlp (error "Enumerable: This is not supposed to be inspected") f wh
   hlp a _ = finiteBitSize a
 
 
+-- | Work in progress
+class Typeable a => CoEnumerable a where
+  coEnumerate :: (Enumerable b,Sized f, Typeable f) => Shared f (a -> b)
+
+-- | Builds a suitable definition for @coEnumerate@ given an pattern matching function for a data type (see source for examples). 
 function :: (Typeable a, Enumerable b, Sized f, Typeable f) => Shareable f (a -> b) -> Shared f (a -> b)
 function f = datatype [ c1 const, f]
 
+
 instance (CoEnumerable a, Enumerable b) => Enumerable (a -> b) where
   enumerate = coEnumerate
-
-class Typeable a => CoEnumerable a where
-  coEnumerate :: (Enumerable b,Sized f, Typeable f) => Shared f (a -> b)
 
 instance CoEnumerable Bool where
   coEnumerate = function $ c2 $ \x y b -> if b then x else y 
