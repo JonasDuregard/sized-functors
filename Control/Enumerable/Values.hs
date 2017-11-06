@@ -8,7 +8,7 @@ module Control.Enumerable.Values
 
 import Control.Enumerable
 
--- | Constructs all values of a given size. 
+-- | Constructs all values of a given size.
 values :: Enumerable a => Int -> [a]
 values = runValues global
 
@@ -31,7 +31,7 @@ instance Functor Values where
 instance Applicative Values where
   pure x     = Values $ \i -> if i == 0 then [x] else []
   fs <*> xs  = fmap (uncurry ($)) (pair fs xs)
-  
+
 instance Alternative Values where
   empty     = Values $ \_ -> []
   xs <|> ys = Values $ \i -> runValues xs i ++ runValues ys i
@@ -39,7 +39,7 @@ instance Alternative Values where
 instance Sized Values where
   pay xs       = Values $ \i -> if i > 0 then runValues xs (i-1) else []
   pair xs ys   = Values $ \i -> [(x,y)|n <- [0..i], x <- runValues xs n, y <- runValues ys (i-n)]
-  
+
   fin n        = Values $ \i -> if i == 0 then [0..n-1] else []
   aconcat []   = empty
   aconcat [x]  = x
@@ -48,11 +48,11 @@ instance Sized Values where
 
 
 
--- Useful for detecting if an enumeration is finite. 
+-- Useful for detecting if an enumeration is finite.
 data MaxSize a = MaxSize {runMaxSize :: [()]} deriving Show
 instance Functor MaxSize where fmap _ = MaxSize . runMaxSize
 
-instance Applicative MaxSize where 
+instance Applicative MaxSize where
   pure _ = MaxSize [()]
   MaxSize [] <*> _  = empty
   _ <*> MaxSize []  = empty
@@ -75,5 +75,5 @@ tst1 n = take n $ runMaxSize (local :: MaxSize TT)
 
 
 
--- -- | All values are memoised. Warning: Using this may be faster but potentially uses a lot of memory. 
+-- -- | All values are memoised. Warning: Using this may be faster but potentially uses a lot of memory.
 -- data Memoised a = Memoised {unMemoised :: [[a]]}

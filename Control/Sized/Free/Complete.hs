@@ -16,7 +16,7 @@ data Complete a where
   Naturals  :: Complete Integer
   Fin       :: Integer -> Complete Integer
   Pay       :: Complete a -> Complete a
-  
+
 instance Functor Complete where
   fmap = (:$:)
 
@@ -27,7 +27,7 @@ instance Applicative Complete where
 instance Alternative Complete where
   empty = Empty
   (<|>) = (:<|>:)
-  
+
 instance Sized Complete where
   pay      = Pay
   naturals = Naturals
@@ -35,4 +35,3 @@ instance Sized Complete where
   aconcat  = Aconcat
   pair     = (:*:)
   fin      = Fin
-

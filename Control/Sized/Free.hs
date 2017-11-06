@@ -22,7 +22,7 @@ data FreeSized a where
   Empty     :: FreeSized a
 --  AssocR    :: FreeSized ((a,b),c) -> FreeSized (a,(b,c))
   deriving Typeable
-  
+
 instance Functor FreeSized where
   fmap = (:$:)
 
@@ -33,7 +33,7 @@ instance Applicative FreeSized where
 instance Alternative FreeSized where
   empty = Empty
   (<|>) = (:+:)
-  
+
 instance Sized FreeSized where
   pay      = Pay
 --  fin      = Fin
