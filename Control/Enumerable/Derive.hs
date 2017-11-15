@@ -8,7 +8,7 @@ instanceFor :: Name -> [[(Name,[Type])] -> Q Dec] -> Name -> Q Dec
 instanceFor clname confs dtname = do
   (cxt,dtvs,cons) <- extractData dtname
   cd              <- mapM conData cons
-  let 
+  let
 #if MIN_VERSION_template_haskell(2,10,0)
     mkCxt = fmap (cxt++) $ mapM (appT (conT clname) . varT) dtvs
 #else
@@ -47,8 +47,8 @@ conData c = case c of
 
 
 x :: IO Type
-x = runQ $ (toType ''(,)) 
-  
+x = runQ $ (toType ''(,))
+
 
 toType n = case lookup n tups of
   Nothing -> conT n

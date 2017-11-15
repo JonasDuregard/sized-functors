@@ -57,7 +57,7 @@ rhss (Uncurry f)  = concatMap rhss (rhss f)
 
 rhsPattern :: Pattern a b -> [b]
 rhsPattern (Pattern _ _ f)  = rhss f
-rhsPattern (NilPat _ _ x)   = [x] 
+rhsPattern (NilPat _ _ x)   = [x]
 
 -- | Is this function minimal in the sense that it has no "false" case distinctions (yielding the same value for all cases)
 isMinimal :: Eq b => Function a b -> Bool
@@ -105,19 +105,19 @@ class Typeable a => Parameter a where
   functions :: (Enumerable b, Typeable f, Sized f) => Shared f (a :-> b)
 
 
-signature :: (Typeable a, Enumerable x, Enumerable b, Typeable f, Sized f) 
+signature :: (Typeable a, Enumerable x, Enumerable b, Typeable f, Sized f)
                => (x -> [Pattern a b]) -> Shared f (a :-> b)
-signature f = share (fmap Constant access <|> pay ps) 
+signature f = share (fmap Constant access <|> pay ps)
   where ps = fmap (Case . f) access -- :: f [Pattern a b]
 
 
-lets :: (Parameter x, Enumerable b, Sized f, Typeable f, Typeable a) => 
+lets :: (Parameter x, Enumerable b, Sized f, Typeable f, Typeable a) =>
            String -> (a -> x) -> Shared f (a :-> b)
 lets s = lets' ((s ++ " ")++)
 
-lets' :: (Parameter x, Enumerable b, Sized f, Typeable f, Typeable a) => 
+lets' :: (Parameter x, Enumerable b, Sized f, Typeable f, Typeable a) =>
            (String -> String) -> (a -> x) -> Shared f (a :-> b)
-lets' s f = share $ fmap (Let s f) access 
+lets' s f = share $ fmap (Let s f) access
 
 showPat :: (Eq a, Show a) => a -> b -> Pattern a b
 showPat a b = NilPat (show a) (==a) b
@@ -137,7 +137,7 @@ instance (Parameter a, Parameter b, Parameter c, Parameter d) => Parameter (a,b,
 instance (Parameter a, Parameter b, Parameter c, Parameter d, Parameter e) => Parameter (a,b,c,d,e) where
   functions = signature $ \f -> [pTuple 5 Just f]
 
-pTuple k = Pattern (\ss _ -> "("++intercalate "," (map ($ False) ss) ++ ")", k) 
+pTuple k = Pattern (\ss _ -> "("++intercalate "," (map ($ False) ss) ++ ")", k)
 
 
 instance (Parameter a, Parameter b) => Parameter (Either a b) where
@@ -155,13 +155,13 @@ instance Parameter Ordering where
   functions = signature $ \(f,g,h) -> [showPat LT f, showPat EQ g, showPat GT h]
 
 instance Parameter a => Parameter [a] where
-  functions = signature go 
+  functions = signature go
     where go (f,g) = [p0 "[]" null f, Pattern (\[s1,s2] -> parenPrt $ s1 True ++ ":" ++ s2 True,2) extCons g]
           extCons xs = do h:t <- return xs ; return (h,t) -- Nicer way to write patterns? LC + listToMaybe?
                      -- listToMaybe [(h,t)|let h:t = xs]
 
 instance Parameter a => Parameter (Maybe a) where
-  functions = signature go 
+  functions = signature go
     where go (f,g) = [p0 "Nothing" (maybe True (const False)) f, p1 "Just" id g]
 
 
@@ -234,7 +234,7 @@ unif = foldr greatest Wild where
   greatest (Var a) (Var b) | a == b     = Var a
   greatest (Pair x y) (Pair a b)        = Pair (greatest x a) (greatest y b)
   greatest (Constr f xs) (Constr _ ys)  = Constr f $ unifs [xs,ys]
-  
+
   unifs :: Eq v => [[Binding v]] -> [Binding v]
   unifs bs = map unif (transpose bs)
 
@@ -256,16 +256,16 @@ showExpr (CaseE k ps)    = ("case "++var k++" of") : indent sps where
   sbs = pad (map show bs)
   ses = map (\e -> " -> " .++ showExpr e) es
   sps = concat $ zipWith (.++) sbs ses
-  
+
   -- showMatcher (b,e)  = (show b ++ " -> ") .++ showExpr e
   s .++ []           = s:[] -- for show instances returning empty strings
   s .++ (s2:ss)      = (s++s2) : ss
-  
+
   pad ss = let m = maximum (map length ss) in map (take m . (++ repeat ' ')) ss
 
 toExpr :: (a :-> b) -> (Binding (), Expr () b)
 toExpr (Case ps)     = (Var (), CaseE () $ map toExprP ps)
-toExpr (Let p _ f)   = case toExpr f of 
+toExpr (Let p _ f)   = case toExpr f of
   (Wild, e) -> (Wild, e)
   (b,e)     -> (Var (), LetE b p () e)
 toExpr (Constant x)  = (Wild, ResE x)
@@ -321,12 +321,12 @@ instance Monad M where
     g a ss = h a ss' where
       (ss',x) = m a ss
       (M h) = f x
-  
+
 produce :: [Int] -> M a -> M a
 produce vs (M a) = M $ \xs ss -> a (vs ++ xs) ss
 
 consume :: (Int -> M a) -> M a
-consume f = M $ \(x:xs) ss -> runM (f x) xs ss 
+consume f = M $ \(x:xs) ss -> runM (f x) xs ss
 
 pop :: M Int
 pop = M (\_ (s:ss) -> (ss,s))
@@ -361,5 +361,3 @@ bind (Pair b1 b2)    = do
 bind (Constr pp bs)   = do
   (bs', vss) <- fmap unzip (mapM bind bs)
   return (Constr pp bs', concat vss)
-
-
