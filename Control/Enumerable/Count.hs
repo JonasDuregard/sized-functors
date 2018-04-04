@@ -9,6 +9,7 @@ module Control.Enumerable.Count (
 
 import Control.Enumerable
 import Control.Sized
+import Data.Semigroup
 import Data.Monoid(Monoid(..))
 import Data.List
 import Data.Typeable(Typeable)
@@ -70,6 +71,9 @@ instance Alternative Count where
     zipWithL f (x:xs) (y:ys) = f x y : zipWithL f xs ys
     zipWithL _ [] ys = ys
     zipWithL _ xs [] = xs
+
+instance Semigroup (Count a) where
+  (<>) = (<|>)
 
 instance Monoid (Count a) where
   mempty = empty
