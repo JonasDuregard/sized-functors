@@ -49,7 +49,7 @@ instance Sized Values where
 
 
 -- Useful for detecting if an enumeration is finite.
-data MaxSize a = MaxSize {runMaxSize :: [()]} deriving Show
+data MaxSize a = MaxSize {runMaxSize :: [()]} deriving (Show, Typeable)
 instance Functor MaxSize where fmap _ = MaxSize . runMaxSize
 
 instance Applicative MaxSize where
