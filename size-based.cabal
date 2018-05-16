@@ -1,5 +1,5 @@
 name:                size-based
-version:             0.1.0.0
+version:             0.1.1.0
 synopsis:            Sized functors, for size-based enumerations
 description:
 

@@ -73,7 +73,3 @@ instance Sized MaxSize where
 type TT = Bool --  [[[[[[[[[[Bool]]]]]]]]]]
 tst1 n = take n $ runMaxSize (local :: MaxSize TT)
 
-
-
--- -- | All values are memoised. Warning: Using this may be faster but potentially uses a lot of memory.
--- data Memoised a = Memoised {unMemoised :: [[a]]}

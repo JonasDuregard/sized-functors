@@ -30,7 +30,7 @@ class Alternative f => Sized f where
   aconcat xs   = foldr1 (<|>) xs
 
   {- | Finite numeric types. @fin n@ contains all non-negative numbers below n. This definition is flat, all integers have the same size.
-  Implementing this function efficiently will have a great impact on applications that use a lot of bounded numberic types (e.g. Int).
+  Implementing this function efficiently will have a great impact on applications that use a lot of bounded numeric types (e.g. Int).
 
   Default: aconcat (map pure [0..n-1]) -}
   fin :: Integer -> f Integer
