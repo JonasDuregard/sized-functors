@@ -1,7 +1,7 @@
 name:                size-based
-version:             0.1.1.0
+version:             0.1.2.0
 synopsis:            Sized functors, for size-based enumerations
-description:
+description:         A framework for size-based enumerations. See the module documentations for details. 
 
 license:             BSD3
 license-file:        LICENSE

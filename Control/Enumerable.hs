@@ -48,9 +48,12 @@ import Data.Ratio
 import Control.Enumerable.Derive hiding (global)
 
 instance (Typeable f, Sized f) => Sized (Shareable f) where
-  pay       = Shareable . fmap pay . run
-  fin       = Shareable . const . fin
-  pair x y  = Shareable $ \r -> pair (run x r) (run y r)
+  pay         = Shareable . fmap pay . run
+  fin         = Shareable . const . fin
+  pair x y    = Shareable $ \r -> pair (run x r) (run y r)
+  aconcat xs  = Shareable $ \r -> aconcat (map (`run` r) xs) 
+  finSized    = Shareable . const . finSized
+  naturals    = Shareable (const naturals)
 
 class Typeable a => Enumerable a where
   enumerate :: (Typeable f, Sized f) => Shared f a
