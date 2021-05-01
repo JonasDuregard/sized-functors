@@ -33,9 +33,9 @@ extractData n = reify n >>= \i -> return $ case i of
   TyConI (NewtypeD cxt _ tvbs con _) -> (cxt, map tvbName tvbs, [con])
 #endif
 
-tvbName :: TyVarBndr -> Name
-tvbName (PlainTV n)  = n
-tvbName (KindedTV n _) = n
+tvbName :: TyVarBndr flag -> Name
+tvbName (PlainTV n _)  = n
+tvbName (KindedTV n _ _) = n
 
 
 conData :: Con -> Q (Name,[Type])
