@@ -33,9 +33,15 @@ extractData n = reify n >>= \i -> return $ case i of
   TyConI (NewtypeD cxt _ tvbs con _) -> (cxt, map tvbName tvbs, [con])
 #endif
 
+#if MIN_VERSION_template_haskell(2,17,0)
+tvbName :: TyVarBndr flag -> Name
+tvbName (PlainTV n _)    = n
+tvbName (KindedTV n _ _) = n
+#else
 tvbName :: TyVarBndr -> Name
 tvbName (PlainTV n)  = n
 tvbName (KindedTV n _) = n
+#endif
 
 
 conData :: Con -> Q (Name,[Type])
